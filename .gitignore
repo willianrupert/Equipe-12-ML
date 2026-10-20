@@ -1,0 +1,9 @@
+# Dados da Praso são confidenciais (termo de confidencialidade): nunca versionar
+data/
+*.csv
+*.parquet
+
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
