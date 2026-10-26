@@ -1,5 +1,11 @@
 """Carregamento, limpeza e checagem de qualidade dos dados de crédito da Praso (KAN-1).
 
+A limpeza só faz o que não perde informação e não exige escolha de modelagem:
+tipos, datas, remoção de registros inválidos e ordenação. As colunas devolvidas
+são as mesmas do CSV original. Representar faixas, criar flags ou preencher
+nulos é engenharia de features (src/features_aplicacao.py e
+src/features_comportamentais.py).
+
 Uso:
     from src.dados import carregar_dados_limpos
     clientes, pedidos = carregar_dados_limpos()
@@ -19,12 +25,15 @@ DIR_PROCESSED = RAIZ / "data" / "processed"
 ARQ_CLIENTES = "credito_aplicacao_clientes_final.csv"
 ARQ_PEDIDOS = "credito_comportamental_pedidos_final.csv"
 
-# A Praso fecha o último intervalo com um teto artificial, ex: "(60, 10000000]" ou
-# "(10000000, 100000000000]". Nesses casos o ponto médio não faz sentido, então usamos
-# o limite inferior. Consideramos aberto quando o teto é >= 100x o limite inferior.
-RAZAO_INTERVALO_ABERTO = 100
+# Colunas que vêm como 0.0/1.0 (ou contagens) em float, sem nulos: viram int sem perda.
+INTEIROS_CLIENTES = [
+    "inadimplente",
+    "serasa_contagem_negativacoes",
+    "serasa_contagem_protestos",
+    "serasa_socio_tem_negativacao",
+]
 
-# Colunas que a Praso transformou em intervalos, ex: "(150, 250]".
+# Colunas que a Praso transformou em faixas, ex: "(150, 250]".
 INTERVALOS_CLIENTES = [
     "capital_social",
     "idade_cnpj",
@@ -37,6 +46,8 @@ INTERVALOS_PEDIDOS = ["valor", "atraso"]
 _RE_INTERVALO = re.compile(r"^\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]$")
 
 
+# --- Utilitárias (usadas pela EDA e pelas features; a limpeza não as usa) ---
+
 def parse_intervalo(valor: object) -> tuple[float, float]:
     """Converte "(a, b]" em (a, b). Retorna (nan, nan) para nulos."""
     if pd.isna(valor):
@@ -47,22 +58,29 @@ def parse_intervalo(valor: object) -> tuple[float, float]:
     return float(m.group(1)), float(m.group(2))
 
 
-def intervalo_para_numero(serie: pd.Series) -> pd.Series:
-    """Ponto médio do intervalo; limite inferior quando o intervalo é aberto."""
+def intervalo_para_numero(serie: pd.Series, razao_aberto: float = 100) -> pd.Series:
+    """Ponto médio da faixa.
+
+    A Praso fecha a última faixa com um teto artificial, ex: "(60, 10000000]".
+    Quando o teto é >= razao_aberto vezes o limite inferior, a faixa é tratada
+    como aberta e o valor vira o limite inferior.
+    """
     limites = serie.map(parse_intervalo)
     inf = limites.str[0]
     sup = limites.str[1]
     meio = (inf + sup) / 2
-    aberto = (inf > 0) & (sup >= RAZAO_INTERVALO_ABERTO * inf)
+    aberto = (inf > 0) & (sup >= razao_aberto * inf)
     return meio.mask(aberto, inf)
 
 
 def intervalo_para_ordinal(serie: pd.Series) -> pd.Series:
-    """Código ordinal (0, 1, 2, ...) do intervalo, ordenado pelo limite inferior."""
+    """Código ordinal (0, 1, 2, ...) da faixa, ordenado pelo limite inferior."""
     inf = serie.map(parse_intervalo).str[0]
     ordem = {v: i for i, v in enumerate(sorted(inf.dropna().unique()))}
     return inf.map(ordem).astype("Int64")
 
+
+# --- Carregamento e validação ---
 
 def carregar_brutos() -> tuple[pd.DataFrame, pd.DataFrame]:
     clientes = pd.read_csv(DIR_RAW / ARQ_CLIENTES)
@@ -82,50 +100,6 @@ def relatorio_qualidade(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def limpar_clientes(clientes: pd.DataFrame) -> pd.DataFrame:
-    df = clientes.copy()
-
-    df["inadimplente"] = df["inadimplente"].astype(int)
-    for col in ["serasa_contagem_negativacoes", "serasa_contagem_protestos", "serasa_socio_tem_negativacao"]:
-        df[col] = df[col].astype(int)
-
-    # Intervalos -> número (ponto médio) e ordinal; a coluna original é mantida.
-    for col in INTERVALOS_CLIENTES:
-        df[f"{col}_num"] = intervalo_para_numero(df[col])
-        df[f"{col}_ord"] = intervalo_para_ordinal(df[col])
-
-    # Faixa de preço do iFood ("$" a "$$$$$") -> 1 a 5.
-    df["ifood_faixa_preco_num"] = df["ifood_faixa_preco"].str.len().astype("Int64")
-
-    # Nulo nas colunas de plataformas = estabelecimento não está na plataforma.
-    df["tem_ifood"] = df[["ifood_contagem_avaliacoes", "ifood_faixa_preco"]].notna().any(axis=1).astype(int)
-    df["tem_google_maps"] = df["google_maps_contagem_avaliacoes"].notna().astype(int)
-    df["tem_credores_serasa"] = df["serasa_credores"].notna().astype(int)
-    # google_maps_tem_website só tem valor 1 ou nulo; nulo vira 0 (sem site conhecido).
-    df["google_maps_tem_website"] = df["google_maps_tem_website"].fillna(0).astype(int)
-
-    return df
-
-
-def limpar_pedidos(pedidos: pd.DataFrame) -> pd.DataFrame:
-    df = pedidos.copy()
-    # Há 2 pedidos com nulo (um sem valor, outro sem atraso): sem como imputar com
-    # segurança a partir de intervalos, são removidos.
-    df = df.dropna(subset=["valor", "atraso"])
-
-    df["data_entrega"] = pd.to_datetime(df["data_entrega"])
-    df["valor_num"] = intervalo_para_numero(df["valor"])
-    df["valor_ord"] = intervalo_para_ordinal(df["valor"])
-
-    # "(-100, 0]" significa que não houve atraso: o ponto médio (-50) não faz sentido.
-    atraso_num = intervalo_para_numero(df["atraso"])
-    df["atraso_num"] = atraso_num.where(atraso_num > 0, 0.0)
-    df["atraso_ord"] = intervalo_para_ordinal(df["atraso"])
-    df["atrasou"] = (df["atraso_num"] > 0).astype(int)
-
-    return df.sort_values(["id_cliente", "data_entrega"]).reset_index(drop=True)
-
-
 def checar_chaves(clientes: pd.DataFrame, pedidos: pd.DataFrame) -> dict:
     return {
         "clientes_duplicados": int(clientes["id_cliente"].duplicated().sum()),
@@ -133,6 +107,42 @@ def checar_chaves(clientes: pd.DataFrame, pedidos: pd.DataFrame) -> dict:
         "pedidos_sem_cliente": int((~pedidos["id_cliente"].isin(clientes["id_cliente"])).sum()),
         "clientes_com_pedidos": int(clientes["id_cliente"].isin(pedidos["id_cliente"]).sum()),
     }
+
+
+def checar_formatos(clientes: pd.DataFrame, pedidos: pd.DataFrame) -> dict:
+    """Quantos valores não nulos fogem do formato esperado, por coluna (0 = tudo certo)."""
+    falhas = {}
+    for df, colunas in [(clientes, INTERVALOS_CLIENTES), (pedidos, INTERVALOS_PEDIDOS)]:
+        for col in colunas:
+            s = df[col].dropna().astype(str).str.strip()
+            falhas[col] = int((~s.str.match(_RE_INTERVALO)).sum())
+    cnae = clientes["cnae_codigo"].dropna().astype(str)
+    falhas["cnae_codigo"] = int((~cnae.str.match(r"^\d{2}\.\d{2}-\d-\d{2}$")).sum())
+    datas = pd.to_datetime(pedidos["data_entrega"], errors="coerce")
+    falhas["data_entrega"] = int((datas.isna() & pedidos["data_entrega"].notna()).sum())
+    return falhas
+
+
+# --- Limpeza ---
+
+def limpar_clientes(clientes: pd.DataFrame) -> pd.DataFrame:
+    """Só converte tipos sem perda. Faixas continuam como texto e nulos como vieram."""
+    df = clientes.copy()
+    for col in INTEIROS_CLIENTES:
+        df[col] = df[col].astype(int)
+    return df
+
+
+def pedidos_invalidos(pedidos: pd.DataFrame) -> pd.Series:
+    """Pedidos sem valor ou sem atraso: não dá para imputar com segurança a partir de faixas."""
+    return pedidos[["valor", "atraso"]].isna().any(axis=1)
+
+
+def limpar_pedidos(pedidos: pd.DataFrame) -> pd.DataFrame:
+    """Remove pedidos inválidos, converte a data e ordena por cliente e data."""
+    df = pedidos.loc[~pedidos_invalidos(pedidos)].copy()
+    df["data_entrega"] = pd.to_datetime(df["data_entrega"])
+    return df.sort_values(["id_cliente", "data_entrega"]).reset_index(drop=True)
 
 
 def carregar_dados_limpos(salvar: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:

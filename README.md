@@ -24,7 +24,9 @@ data/raw/          CSVs originais da Praso (não versionados)
 data/processed/    dados limpos gerados pelos notebooks (não versionados)
 notebooks/         um notebook por etapa, numerados na ordem de execução
 reports/figures/   gráficos usados no relatório e nos slides
-src/               código reutilizável (carregamento, limpeza, features, modelos)
+src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registros inválidos, utilitárias de faixas
+src/features_aplicacao.py  features do modelo de aplicação (KAN-5)
+src/features_comportamentais.py  features do histórico de pedidos (KAN-7)
 ```
 
 ## Etapas (Jira: projeto KAN)
@@ -33,9 +35,9 @@ src/               código reutilizável (carregamento, limpeza, features, model
 |---|---|---|---|
 | Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | em revisão |
 | EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
-| Features do modelo de aplicação | KAN-5 | — | a fazer |
+| Features do modelo de aplicação | KAN-5 | `src/features_aplicacao.py` (ponto de partida herdado da KAN-1) | a fazer |
 | Modelo de aplicação | KAN-6 | — | a fazer |
-| Agregações do histórico de pedidos | KAN-7 | — | a fazer |
+| Agregações do histórico de pedidos | KAN-7 | `src/features_comportamentais.py` (ponto de partida herdado da KAN-1) | a fazer |
 | Modelo comportamental | KAN-8 | — | a fazer |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
 | Relatório (até 8 páginas, template Overleaf) | KAN-10 | — | a fazer |
@@ -59,7 +61,15 @@ Entrega final no Classroom: **25/11/2026** (relatório, slides e link deste repo
    cd notebooks && ../.venv/bin/jupyter lab
    ```
 
-Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`.
+Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles têm as mesmas colunas do CSV original: as faixas continuam como texto e os nulos como vieram.
+
+## Pipeline
+
+- **Limpeza** (`src/dados.py`): é a única etapa compartilhada. Só faz o que não perde informação nem exige escolha de modelagem: converte tipos e datas, remove registros inválidos (mostrando quantos e por quê), valida chaves e formatos e ordena os pedidos.
+- **Não fica na limpeza:** criar colunas novas (`_num`, `_ord`, `tem_*`, `atrasou`), preencher nulos, agregar pedidos ou cruzar qualquer coluna com o alvo.
+- **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7).
+- **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino.
+- **Split compartilhado:** a KAN-6 salva o split com a seed, e a KAN-8 usa o mesmo split.
 
 ## Como contribuir
 
