@@ -31,11 +31,14 @@ from src.dados import intervalo_para_numero, intervalo_para_ordinal
 
 DICIONARIO = {
     "n_pedidos": "Número de pedidos válidos do cliente (quase sempre 3).",
+    "n_dias_com_pedido": "Número de dias distintos com pedido (vários pedidos no mesmo dia contam como 1).",
     "valor_media": "Média do valor dos pedidos (ponto médio da faixa, R$).",
+    "valor_mediana": "Mediana do valor dos pedidos (ponto médio da faixa, R$).",
     "valor_min": "Menor valor de pedido (ponto médio da faixa, R$).",
     "valor_max": "Maior valor de pedido (ponto médio da faixa, R$).",
     "valor_ord_max": "Maior faixa de valor (0 = (0, 500], 3 = acima de 2000).",
     "atraso_media": "Média do atraso em dias (sem atraso = 0; ponto médio da faixa).",
+    "atraso_mediana": "Mediana do atraso em dias (sem atraso = 0; ponto médio da faixa).",
     "atraso_max": "Maior atraso em dias (ponto médio da faixa; faixa aberta = limite inferior).",
     "atraso_ord_max": "Maior faixa de atraso (0 = sem atraso, 8 = mais de 60 dias).",
     "pct_atraso": "Proporção de pedidos com qualquer atraso (0 a 1).",
@@ -85,11 +88,14 @@ def agregar_pedidos(pedidos: pd.DataFrame, excluir_ultimo: bool = False) -> pd.D
 
     feats = g.agg(
         n_pedidos=("id_pedido", "size"),
+        n_dias_com_pedido=("data_entrega", "nunique"),
         valor_media=("valor_num", "mean"),
+        valor_mediana=("valor_num", "median"),
         valor_min=("valor_num", "min"),
         valor_max=("valor_num", "max"),
         valor_ord_max=("valor_ord", "max"),
         atraso_media=("atraso_num", "mean"),
+        atraso_mediana=("atraso_num", "median"),
         atraso_max=("atraso_num", "max"),
         atraso_ord_max=("atraso_ord", "max"),
         pct_atraso=("atrasou", "mean"),
