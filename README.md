@@ -61,12 +61,14 @@ Entrega final no Classroom: **25/11/2026** (relatório, slides e link deste repo
    cd notebooks && ../.venv/bin/jupyter lab
    ```
 
-Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles têm as mesmas colunas do CSV original: as faixas continuam como texto e os nulos como vieram.
+Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles têm as mesmas colunas do CSV original, com os nulos como vieram. As faixas (`"(150, 250]"`) viram categórica ordenada pelo limite inferior, com as categorias fixadas na base inteira, então `.cat.codes` dá o mesmo código em qualquer subconjunto.
+
+> O CSV salvo em `data/processed/` perde o tipo categórico. Não leia esse CSV direto: use sempre `carregar_dados_limpos()`.
 
 ## Pipeline
 
-- **Limpeza** (`src/dados.py`): é a única etapa compartilhada. Só faz o que não perde informação nem exige escolha de modelagem: converte tipos e datas, remove registros inválidos (mostrando quantos e por quê), valida chaves e formatos e ordena os pedidos.
-- **Não fica na limpeza:** criar colunas novas (`_num`, `_ord`, `tem_*`, `atrasou`), preencher nulos, agregar pedidos ou cruzar qualquer coluna com o alvo.
+- **Limpeza** (`src/dados.py`): é a única etapa compartilhada. Só faz o que não perde informação nem exige escolha de modelagem: converte tipos, faixas (categórica ordenada) e datas, valida chaves e formatos e ordena os pedidos. Não remove registros: os 2 pedidos com nulo ficam, e a KAN-7 decide o que fazer com eles.
+- **Não fica na limpeza:** criar colunas novas (`_num`, `_ord`, `tem_*`, `atrasou`), escolher ponto médio ou tratamento da última faixa, preencher nulos, agregar pedidos ou cruzar qualquer coluna com o alvo.
 - **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7).
 - **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino.
 - **Split compartilhado:** a KAN-6 salva o split com a seed, e a KAN-8 usa o mesmo split.

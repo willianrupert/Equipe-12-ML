@@ -1,10 +1,14 @@
 """Carregamento, limpeza e checagem de qualidade dos dados de crédito da Praso (KAN-1).
 
 A limpeza só faz o que não perde informação e não exige escolha de modelagem:
-tipos, datas, remoção de registros inválidos e ordenação. As colunas devolvidas
-são as mesmas do CSV original. Representar faixas, criar flags ou preencher
-nulos é engenharia de features (src/features_aplicacao.py e
+tipos, datas e ordenação. Nenhum registro é removido. As colunas devolvidas são
+as mesmas do CSV original; as faixas viram categórica ordenada (mesmo texto, com
+ordem e códigos estáveis). Representar faixas como número, criar flags ou
+preencher nulos é engenharia de features (src/features_aplicacao.py e
 src/features_comportamentais.py).
+
+O CSV salvo em data/processed/ perde o tipo categórico. Use sempre
+carregar_dados_limpos().
 
 Uso:
     from src.dados import carregar_dados_limpos
@@ -58,26 +62,24 @@ def parse_intervalo(valor: object) -> tuple[float, float]:
     return float(m.group(1)), float(m.group(2))
 
 
-def intervalo_para_numero(serie: pd.Series, razao_aberto: float = 100) -> pd.Series:
-    """Ponto médio da faixa.
+def limites(serie: pd.Series) -> pd.DataFrame:
+    """Limites inferior (inf) e superior (sup) de cada faixa, como vieram.
 
-    A Praso fecha a última faixa com um teto artificial, ex: "(60, 10000000]".
-    Quando o teto é >= razao_aberto vezes o limite inferior, a faixa é tratada
-    como aberta e o valor vira o limite inferior.
+    Não escolhe representação: ponto médio, tratamento da última faixa
+    (teto artificial) e afins ficam com a engenharia de features.
     """
-    limites = serie.map(parse_intervalo)
-    inf = limites.str[0]
-    sup = limites.str[1]
-    meio = (inf + sup) / 2
-    aberto = (inf > 0) & (sup >= razao_aberto * inf)
-    return meio.mask(aberto, inf)
+    pares = serie.astype(object).map(parse_intervalo)
+    return pd.DataFrame({"inf": pares.str[0], "sup": pares.str[1]}, index=serie.index)
 
 
-def intervalo_para_ordinal(serie: pd.Series) -> pd.Series:
-    """Código ordinal (0, 1, 2, ...) da faixa, ordenado pelo limite inferior."""
-    inf = serie.map(parse_intervalo).str[0]
-    ordem = {v: i for i, v in enumerate(sorted(inf.dropna().unique()))}
-    return inf.map(ordem).astype("Int64")
+def _faixa_ordenada(serie: pd.Series) -> pd.Series:
+    """Texto "(a, b]" -> categórica ordenada pelo limite inferior.
+
+    As categorias saem da base inteira, então o código (.cat.codes) de cada faixa
+    é o mesmo em qualquer subconjunto (treino, teste, clientes com pedidos).
+    """
+    categorias = sorted(serie.dropna().unique(), key=lambda v: parse_intervalo(v)[0])
+    return pd.Series(pd.Categorical(serie, categories=categorias, ordered=True), index=serie.index, name=serie.name)
 
 
 # --- Carregamento e validação ---
@@ -126,21 +128,25 @@ def checar_formatos(clientes: pd.DataFrame, pedidos: pd.DataFrame) -> dict:
 # --- Limpeza ---
 
 def limpar_clientes(clientes: pd.DataFrame) -> pd.DataFrame:
-    """Só converte tipos sem perda. Faixas continuam como texto e nulos como vieram."""
+    """Converte tipos sem perda: 0/1 em float -> int e faixas -> categórica ordenada. Nulos ficam como vieram."""
     df = clientes.copy()
     for col in INTEIROS_CLIENTES:
         df[col] = df[col].astype(int)
+    for col in INTERVALOS_CLIENTES:
+        df[col] = _faixa_ordenada(df[col])
     return df
 
 
-def pedidos_invalidos(pedidos: pd.DataFrame) -> pd.Series:
-    """Pedidos sem valor ou sem atraso: não dá para imputar com segurança a partir de faixas."""
+def pedidos_com_nulo(pedidos: pd.DataFrame) -> pd.Series:
+    """Pedidos sem valor ou sem atraso. Ficam na base; o tratamento é decisão da KAN-7."""
     return pedidos[["valor", "atraso"]].isna().any(axis=1)
 
 
 def limpar_pedidos(pedidos: pd.DataFrame) -> pd.DataFrame:
-    """Remove pedidos inválidos, converte a data e ordena por cliente e data."""
-    df = pedidos.loc[~pedidos_invalidos(pedidos)].copy()
+    """Converte faixas e data e ordena por cliente e data. Nenhum pedido é removido."""
+    df = pedidos.copy()
+    for col in INTERVALOS_PEDIDOS:
+        df[col] = _faixa_ordenada(df[col])
     df["data_entrega"] = pd.to_datetime(df["data_entrega"])
     return df.sort_values(["id_cliente", "data_entrega"]).reset_index(drop=True)
 

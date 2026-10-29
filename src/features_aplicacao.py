@@ -4,7 +4,9 @@ Ponto de partida: o código abaixo saiu de src/dados.py na revisão da KAN-1 e
 mantém as decisões tomadas lá. Cabe à KAN-5 revisar cada uma e decidir se
 mantém, troca ou testa alternativas:
 - faixas -> ponto médio (_num) e ordinal (_ord); o limiar de faixa aberta
-  (razao_aberto=100) também é uma escolha;
+  (razao_aberto=100) também é uma escolha. A limpeza entrega as faixas como
+  categórica ordenada; o ordinal usa os códigos dela, iguais em qualquer
+  subconjunto;
 - ifood_faixa_preco "$".."$$$$$" -> 1..5 (assume distância igual entre faixas;
   tratar como categoria é igualmente válido);
 - flags de presença (tem_ifood, tem_google_maps, tem_credores_serasa);
@@ -19,15 +21,32 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.dados import INTERVALOS_CLIENTES, intervalo_para_numero, intervalo_para_ordinal
+from src.dados import INTERVALOS_CLIENTES, limites
+
+
+def ponto_medio(serie: pd.Series, razao_aberto: float = 100) -> pd.Series:
+    """Ponto médio da faixa. Decisão desta etapa, não da limpeza.
+
+    A Praso fecha a última faixa com um teto artificial, ex: "(60, 10000000]".
+    Quando o teto é >= razao_aberto vezes o limite inferior, a faixa é tratada
+    como aberta e o valor vira o limite inferior.
+    """
+    lim = limites(serie)
+    aberto = (lim["inf"] > 0) & (lim["sup"] >= razao_aberto * lim["inf"])
+    return ((lim["inf"] + lim["sup"]) / 2).mask(aberto, lim["inf"])
+
+
+def ordinal(serie: pd.Series) -> pd.Series:
+    """Código ordinal estável da faixa (categórica da limpeza); nulo continua nulo."""
+    return serie.cat.codes.astype("Int64").mask(serie.isna())
 
 
 def adicionar_faixas_numericas(clientes: pd.DataFrame, razao_aberto: float = 100) -> pd.DataFrame:
     """Para cada coluna em faixa, cria <col>_num (ponto médio) e <col>_ord (ordinal)."""
     df = clientes.copy()
     for col in INTERVALOS_CLIENTES:
-        df[f"{col}_num"] = intervalo_para_numero(df[col], razao_aberto)
-        df[f"{col}_ord"] = intervalo_para_ordinal(df[col])
+        df[f"{col}_num"] = ponto_medio(df[col], razao_aberto)
+        df[f"{col}_ord"] = ordinal(df[col])
     return df
 
 
