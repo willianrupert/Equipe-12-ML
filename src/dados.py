@@ -4,8 +4,9 @@ A limpeza só faz o que não perde informação e não exige escolha de modelage
 tipos, datas e ordenação. Nenhum registro é removido. As colunas devolvidas são
 as mesmas do CSV original; as faixas viram categórica ordenada (mesmo texto, com
 ordem e códigos estáveis). Representar faixas como número, criar flags ou
-preencher nulos é engenharia de features (src/features_aplicacao.py e
-src/features_comportamentais.py).
+preencher nulos é engenharia de features, que cada etapa (KAN-5 e KAN-7) faz
+no próprio código a partir daqui. A função limites() devolve os limites de
+cada faixa para isso.
 
 O CSV salvo em data/processed/ perde o tipo categórico. Use sempre
 carregar_dados_limpos().
