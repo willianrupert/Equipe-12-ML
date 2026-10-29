@@ -25,8 +25,6 @@ data/processed/    dados limpos gerados pelos notebooks (não versionados)
 notebooks/         um notebook por etapa, numerados na ordem de execução
 reports/figures/   gráficos usados no relatório e nos slides
 src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registros inválidos, utilitárias de faixas
-src/features_aplicacao.py  features do modelo de aplicação (KAN-5)
-src/features_comportamentais.py  features do histórico de pedidos (KAN-7)
 ```
 
 ## Etapas (Jira: projeto KAN)
@@ -35,9 +33,9 @@ src/features_comportamentais.py  features do histórico de pedidos (KAN-7)
 |---|---|---|---|
 | Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | em revisão |
 | EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
-| Features do modelo de aplicação | KAN-5 | `src/features_aplicacao.py` (ponto de partida herdado da KAN-1) | a fazer |
+| Features do modelo de aplicação | KAN-5 | — | a fazer |
 | Modelo de aplicação | KAN-6 | — | a fazer |
-| Agregações do histórico de pedidos | KAN-7 | `src/features_comportamentais.py` (ponto de partida herdado da KAN-1) | a fazer |
+| Agregações do histórico de pedidos | KAN-7 | — | a fazer |
 | Modelo comportamental | KAN-8 | — | a fazer |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
 | Relatório (até 8 páginas, template Overleaf) | KAN-10 | — | a fazer |
@@ -69,7 +67,7 @@ Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles
 
 - **Limpeza** (`src/dados.py`): é a única etapa compartilhada. Só faz o que não perde informação nem exige escolha de modelagem: converte tipos, faixas (categórica ordenada) e datas, valida chaves e formatos e ordena os pedidos. Não remove registros: os 2 pedidos com nulo ficam, e a KAN-7 decide o que fazer com eles.
 - **Não fica na limpeza:** criar colunas novas (`_num`, `_ord`, `tem_*`, `atrasou`), escolher ponto médio ou tratamento da última faixa, preencher nulos, agregar pedidos ou cruzar qualquer coluna com o alvo.
-- **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7).
+- **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7), que cria o próprio código a partir de `src/dados.py`.
 - **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino.
 - **Split compartilhado:** a KAN-6 salva o split com a seed, e a KAN-8 usa o mesmo split.
 
