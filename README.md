@@ -25,8 +25,10 @@ data/processed/    dados limpos gerados pelos notebooks (não versionados)
 notebooks/         um notebook por etapa, numerados na ordem de execução
 reports/figures/   gráficos usados no relatório e nos slides
 src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registros inválidos, utilitárias de faixas
-src/features_aplicacao.py  features do modelo de aplicação (KAN-5)
-src/features_comportamentais.py  features do histórico de pedidos (KAN-7)
+src/split.py               split treino/teste e folds da validação cruzada, compartilhados (KAN-5)
+src/avaliacao.py           AUC por fold e comparação pareada entre configurações (KAN-5)
+src/features_aplicacao.py  features e pré-processador do modelo de aplicação (KAN-5)
+src/features_comportamentais.py  features do histórico de pedidos (KAN-7, a criar)
 ```
 
 ## Etapas (Jira: projeto KAN)
@@ -35,9 +37,9 @@ src/features_comportamentais.py  features do histórico de pedidos (KAN-7)
 |---|---|---|---|
 | Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | em revisão |
 | EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
-| Features do modelo de aplicação | KAN-5 | `src/features_aplicacao.py` (ponto de partida herdado da KAN-1) | a fazer |
+| Features do modelo de aplicação | KAN-5 | `notebooks/03_features_aplicacao.ipynb`, `src/features_aplicacao.py`, `src/split.py`, `src/avaliacao.py` | em revisão |
 | Modelo de aplicação | KAN-6 | — | a fazer |
-| Agregações do histórico de pedidos | KAN-7 | `src/features_comportamentais.py` (ponto de partida herdado da KAN-1) | a fazer |
+| Agregações do histórico de pedidos | KAN-7 | `src/features_comportamentais.py` (a criar) | a fazer |
 | Modelo comportamental | KAN-8 | — | a fazer |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
 | Relatório (até 8 páginas, template Overleaf) | KAN-10 | — | a fazer |
@@ -69,9 +71,10 @@ Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles
 
 - **Limpeza** (`src/dados.py`): é a única etapa compartilhada. Só faz o que não perde informação nem exige escolha de modelagem: converte tipos, faixas (categórica ordenada) e datas, valida chaves e formatos e ordena os pedidos. Não remove registros: os 2 pedidos com nulo ficam, e a KAN-7 decide o que fazer com eles.
 - **Não fica na limpeza:** criar colunas novas (`_num`, `_ord`, `tem_*`, `atrasou`), escolher ponto médio ou tratamento da última faixa, preencher nulos, agregar pedidos ou cruzar qualquer coluna com o alvo.
-- **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7).
-- **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino.
-- **Split compartilhado:** a KAN-6 salva o split com a seed, e a KAN-8 usa o mesmo split.
+- **Features:** cada uma fica com o dono do modelo (KAN-5 e KAN-7). No modelo de aplicação, `criar_features(clientes)` faz as transformações que não aprendem nada dos dados, e `FEATURES_FINAIS` lista as 11 features escolhidas pela ablação (notebook 03, seção 6).
+- **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino. No modelo de aplicação, é o `montar_preprocessador(tipo, colunas)`.
+- **Split compartilhado** (`src/split.py`, definido na KAN-5): 80/20, seed 42, estratificado por `inadimplente × tem_pedidos`, para os clientes com pedidos ficarem na mesma proporção no treino e no teste. Fica salvo em `data/processed/split.csv`. A KAN-6 e a KAN-8 leem com `split.carregar_split()` e usam os mesmos folds de validação cruzada (5 folds × 5 repetições) com `split.folds(treino, pedidos)`. O teste é usado uma vez só, na avaliação final.
+- **Comparação de modelos** (`src/avaliacao.py`): as configurações são comparadas nos mesmos folds, com o ganho pareado de AUC e o erro padrão corrigido de Nadeau e Bengio (os folds repetidos não são independentes).
 
 ## Como contribuir
 
