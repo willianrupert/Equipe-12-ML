@@ -28,7 +28,6 @@ src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registro
 src/split.py               split treino/teste e folds da validação cruzada, compartilhados (KAN-5)
 src/avaliacao.py           AUC por fold e comparação pareada entre configurações (KAN-5)
 src/features_aplicacao.py  features e pré-processador do modelo de aplicação (KAN-5)
-src/features_comportamentais.py  features do histórico de pedidos (KAN-7, a criar)
 ```
 
 ## Etapas (Jira: projeto KAN)
@@ -39,7 +38,7 @@ src/features_comportamentais.py  features do histórico de pedidos (KAN-7, a cri
 | EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
 | Features do modelo de aplicação | KAN-5 | `notebooks/03_features_aplicacao.ipynb`, `src/features_aplicacao.py`, `src/split.py`, `src/avaliacao.py` | em revisão |
 | Modelo de aplicação | KAN-6 | — | a fazer |
-| Agregações do histórico de pedidos | KAN-7 | `src/features_comportamentais.py` (a criar) | a fazer |
+| Agregações do histórico de pedidos | KAN-7 | — | a fazer |
 | Modelo comportamental | KAN-8 | — | a fazer |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
 | Relatório (até 8 páginas, template Overleaf) | KAN-10 | — | a fazer |
