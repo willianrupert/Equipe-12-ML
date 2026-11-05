@@ -8,7 +8,7 @@ Duas camadas:
 - criar_features: transformações determinísticas, que não aprendem nada dos
   dados (converter faixas, criar flags, contar credores). Pode rodar na base
   inteira antes do split.
-- o que aprende dos dados (agrupar categorias raras, target encoding, escala)
+- o que aprende dos dados (agrupar categorias raras, target encoding)
   fica no pré-processador, ajustado só no treino dentro do Pipeline.
 
 Uso:
@@ -19,15 +19,11 @@ Uso:
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import StratifiedKFold
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import (
-    FunctionTransformer, OneHotEncoder, OrdinalEncoder, SplineTransformer, StandardScaler, TargetEncoder,
-)
+from sklearn.preprocessing import OrdinalEncoder, TargetEncoder
 
 # Região Metropolitana de Fortaleza sem a capital: 18 municípios (IPECE), grafia da base.
 RMF = {
@@ -86,22 +82,21 @@ BINARIAS = [
 ]
 CATEGORICAS = ["natureza", "fonte_cliente", "segmento_cliente", "cnae_divisao", "cnae_classe", "regiao"]
 
-# Features do modelo de aplicação, escolhidas pela ablação no treino (notebook 03, seção 6). Saíram, sem
+# Features do modelo de aplicação, escolhidas pela ablação no treino (notebook 03, seções 6 a 6.3). Saíram, sem
 # perda de AUC: plataformas, negativacoes (redundante com n_credores), deve_* e cnae_divisao. Também saíram,
 # por serem funções de outras features que a árvore monta sozinha: tem_credores (n_credores > 0) e
 # sem_registro_serasa (n_credores = 0, sócio limpo e negativado_sem_credor = 0). sem_registro_serasa continua
-# em criar_features para separar os grupos na análise de dependência da Serasa.
+# em criar_features para separar os grupos na análise de dependência da Serasa. Por último saiu protestos
+# (seção 6.3): sem ela, o AUC da Random Forest sobe 0,001 (1 erro padrão), e a árvore de decisão não a usa.
 FEATURES_FINAIS = [
     "idade_cnpj_ord",
     "capital_social_ord", "natureza",
-    "n_credores", "socio_negativado", "negativado_sem_credor", "protestos",
+    "n_credores", "socio_negativado", "negativado_sem_credor",
     "fonte_cliente", "segmento_cliente", "cnae_classe", "regiao",
 ]
 
 # Pré-processador (ajustado só no treino)
 MIN_FREQ = 30  # categoria com menos clientes no treino vira "infrequent" (o "outros" da EDA)
-CONTAGENS = ["negativacoes", "protestos", "n_credores"]  # cauda longa: log na versão linear
-N_KNOTS_IDADE = 5
 
 
 def lista_credores(serasa_credores: pd.Series) -> pd.Series:
@@ -168,14 +163,12 @@ def _target_encoder() -> TargetEncoder:
     return TargetEncoder(target_type="binary", random_state=0)
 
 
-def montar_preprocessador(tipo: str, colunas: list[str] | None = None, cnae: str = "raras") -> ColumnTransformer:
-    """Pré-processador a ajustar só no treino, dentro do Pipeline. Recebe a saída de criar_features.
+def montar_preprocessador(colunas: list[str] | None = None, cnae: str = "raras") -> ColumnTransformer:
+    """Pré-processador para os modelos de árvore, a ajustar só no treino, dentro do Pipeline.
 
-    - "arvore": numéricas e binárias passam como estão; categóricas viram códigos, com as raras
-      (< MIN_FREQ clientes no treino) num código só.
-    - "linear": idade por splines (nós nos quantis, sem olhar o alvo), log nas contagens,
-      padronização das ordinais e one-hot das categóricas, com as raras numa coluna só.
-    Categoria que não apareceu no treino cai no grupo das raras ("linear") ou no código -1 ("arvore").
+    Recebe a saída de criar_features. Numéricas e binárias passam como estão; categóricas viram
+    códigos, com as raras (< MIN_FREQ clientes no treino) num código só. Categoria que não
+    apareceu no treino recebe o código -1.
 
     colunas: subconjunto das features a usar (padrão: todas), para a ablação.
     cnae: "raras" (cnae_classe tratada como as outras categóricas) ou "target" (target encoding,
@@ -186,26 +179,11 @@ def montar_preprocessador(tipo: str, colunas: list[str] | None = None, cnae: str
     usar = set(NUMERICAS + BINARIAS + CATEGORICAS) if colunas is None else set(colunas)
     sel = lambda cols: [c for c in cols if c in usar]
     te = ["cnae_classe"] if cnae == "target" else []
-    categoricas = [c for c in sel(CATEGORICAS) if c not in te]
-
-    if tipo == "arvore":
-        transformadores = [
-            ("num", "passthrough", sel(NUMERICAS + BINARIAS)),
-            ("cat", OrdinalEncoder(min_frequency=MIN_FREQ, handle_unknown="use_encoded_value", unknown_value=-1),
-             categoricas),
-        ]
-    elif tipo == "linear":
-        transformadores = [
-            ("idade", SplineTransformer(n_knots=N_KNOTS_IDADE, degree=3, knots="quantile"), sel(["idade_cnpj_ord"])),
-            ("contagens", make_pipeline(FunctionTransformer(np.log1p, feature_names_out="one-to-one"), StandardScaler()),
-             sel(CONTAGENS)),
-            ("ordinais", StandardScaler(), sel([c for c in NUMERICAS if c not in CONTAGENS and c != "idade_cnpj_ord"])),
-            ("bin", "passthrough", sel(BINARIAS)),
-            ("cat", OneHotEncoder(min_frequency=MIN_FREQ, handle_unknown="infrequent_if_exist", sparse_output=False),
-             categoricas),
-        ]
-    else:
-        raise ValueError(f"tipo deve ser 'arvore' ou 'linear', não {tipo!r}")
-    transformadores.append(("cnae_te", _target_encoder(), sel(te)))
+    transformadores = [
+        ("num", "passthrough", sel(NUMERICAS + BINARIAS)),
+        ("cat", OrdinalEncoder(min_frequency=MIN_FREQ, handle_unknown="use_encoded_value", unknown_value=-1),
+         [c for c in sel(CATEGORICAS) if c not in te]),
+        ("cnae_te", _target_encoder(), sel(te)),
+    ]
     transformadores = [t for t in transformadores if t[2]]  # sem colunas selecionadas, a etapa sai
     return ColumnTransformer(transformadores, verbose_feature_names_out=False).set_output(transform="pandas")

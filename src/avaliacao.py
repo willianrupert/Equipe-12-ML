@@ -39,7 +39,9 @@ def comparar(auc_com: np.ndarray, auc_sem: np.ndarray, folds: list[tuple]) -> di
     erro_padrao = float(np.sqrt((1 / len(d) + n_validacao / n_treino) * d.var(ddof=1)))
     ganho = float(d.mean())
     veredito = "acrescenta" if ganho > erro_padrao else "atrapalha" if ganho < -erro_padrao else "neutro"
-    return {"ganho": ganho, "erro padrão": erro_padrao, "ganho / erro padrão": ganho / erro_padrao, "veredito": veredito}
+    # Sem variação (ex: o modelo ignora o item e dá o mesmo AUC em todos os folds): a razão fica 0 se não há ganho
+    razao = ganho / erro_padrao if erro_padrao > 0 else (0.0 if ganho == 0 else float(np.sign(ganho)) * np.inf)
+    return {"ganho": ganho, "erro padrão": erro_padrao, "ganho / erro padrão": razao, "veredito": veredito}
 
 
 def auc_por_fold_e_grupo(modelo, X, y, folds: list[tuple], grupos: pd.Series) -> pd.DataFrame:
