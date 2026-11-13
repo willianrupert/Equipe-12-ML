@@ -28,6 +28,7 @@ src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registro
 src/split.py               split treino/teste e folds da validação cruzada, compartilhados (KAN-5)
 src/avaliacao.py           AUC por fold e comparação pareada entre configurações (KAN-5)
 src/features_aplicacao.py  features e pré-processador do modelo de aplicação (KAN-5)
+src/modelo_aplicacao.py    modelos, calibração e scores do modelo de aplicação (KAN-6)
 src/features_comportamentais.py  features do histórico de pedidos, com e sem o último pedido (KAN-7)
 ```
 
@@ -38,7 +39,7 @@ src/features_comportamentais.py  features do histórico de pedidos, com e sem o 
 | Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | em revisão |
 | EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
 | Features do modelo de aplicação | KAN-5 | `notebooks/03_features_aplicacao.ipynb`, `src/features_aplicacao.py`, `src/split.py`, `src/avaliacao.py` | em revisão |
-| Modelo de aplicação | KAN-6 | — | a fazer |
+| Modelo de aplicação | KAN-6 | `notebooks/05_modelo_aplicacao.ipynb`, `src/modelo_aplicacao.py` | em revisão |
 | Agregações do histórico de pedidos | KAN-7 | `notebooks/04_features_comportamentais.ipynb`, `src/features_comportamentais.py` | em revisão |
 | Modelo comportamental | KAN-8 | — | a fazer |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
@@ -75,6 +76,8 @@ Nos notebooks, os dados limpos vêm de `src.dados.carregar_dados_limpos()`. Eles
 - **Ajuste só no treino:** transformações que dependem dos dados (agrupar categorias raras, imputar, *target encoding*) ficam dentro do `Pipeline` do scikit-learn e são ajustadas só no treino. No modelo de aplicação, é o `montar_preprocessador(colunas)`, feito para modelos de árvore (árvore de decisão e Random Forest), que combinam as features sozinhos (notebook 03, seção 5).
 - **Split compartilhado** (`src/split.py`, definido na KAN-5): 80/20, seed 42, estratificado por `inadimplente × tem_pedidos`, para os clientes com pedidos ficarem na mesma proporção no treino e no teste. Fica salvo em `data/processed/split.csv`. A KAN-6 e a KAN-8 leem com `split.carregar_split()` e usam os mesmos folds de validação cruzada (5 folds × 5 repetições) com `split.folds(treino, pedidos)`. O teste é usado uma vez só, na avaliação final.
 - **Comparação de modelos** (`src/avaliacao.py`): as configurações são comparadas nos mesmos folds, com o ganho pareado de AUC e o erro padrão corrigido de Nadeau e Bengio (os folds repetidos não são independentes).
+- **Modelo de aplicação** (`src/modelo_aplicacao.py`, KAN-6): XGBoost com os parâmetros de `PARAMS_FINAIS` e calibração sigmoide, em `modelo_final()`. Foi escolhido contra árvore de decisão, regressão logística, Random Forest e LightGBM (notebook 05, seção 5). AUC de 0,777 na validação cruzada e 0,798 no teste.
+- **Scores do modelo de aplicação:** `data/processed/scores_aplicacao.csv` (não versionado), lido com `modelo_aplicacao.carregar_scores()`. Uma probabilidade calibrada por cliente: fora da amostra no treino (média das 5 repetições dos folds) e do modelo final no teste. As validações cruzadas do notebook 05 ficam em cache em `data/processed/cache_kan6/`; apague a pasta se mudar as features ou o pré-processador.
 
 ## Como contribuir
 
