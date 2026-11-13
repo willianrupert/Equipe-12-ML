@@ -16,9 +16,11 @@ o nulo é ignorado.
 Vazamento temporal: os dados não têm data de referência nem a data em que a
 inadimplência foi observada, e quase todo cliente tem exatamente os últimos 3
 pedidos. O atraso do último pedido separa o alvo muito mais do que o dos
-anteriores (notebook 04, seção 4), o que sugere que ele pode ser o pedido em que a
-inadimplência aconteceu. Por isso agregar_pedidos aceita excluir_ultimo=True
-(versão conservadora), e a KAN-8 deve comparar as duas versões. Recência absoluta
+anteriores (notebook 04, seção 4). Há duas hipóteses: (a) o último pedido é anterior
+à inadimplência, e todos os pedidos podem ser usados; (b) o último pedido é o evento
+da inadimplência, e usá-lo seria vazamento. O notebook 04 testa as duas no
+histórico dos inadimplentes (seção 4.3) e escolhe uma versão só (seção 4.4).
+agregar_pedidos aceita excluir_ultimo=True para gerar a versão (b). Recência absoluta
 (dias até uma data fixa) não é calculada: ela mediria a época, não o comportamento.
 
 Nada aqui usa o alvo nem estatísticas do conjunto de clientes, então as features
@@ -29,7 +31,7 @@ Uso:
     from src.dados import carregar_dados_limpos
     from src import features_comportamentais as fc
     clientes, pedidos = carregar_dados_limpos()
-    feats = fc.agregar_pedidos(fc.converter_pedidos(pedidos), excluir_ultimo=False)
+    feats = fc.agregar_pedidos(fc.converter_pedidos(pedidos), excluir_ultimo=...)  # versão do notebook 04, seção 4.4
     base = fc.juntar_clientes(clientes, feats)  # left join + tem_pedidos
 """
 from __future__ import annotations
@@ -55,7 +57,7 @@ DICIONARIO = {
     "atraso_ord_max": "Maior faixa de atraso (0 = sem atraso, 8 = mais de 60 dias).",
     "pct_atraso": "Proporção de pedidos com qualquer atraso (0 a 1).",
     "pct_atraso_2d": "Proporção de pedidos com atraso acima de 2 dias (0 a 1).",
-    "atraso_ultimo": "Atraso do pedido mais recente (dias). Suspeita de vazamento: ver docstring do módulo.",
+    "atraso_ultimo": "Atraso do pedido mais recente (dias). Ver hipóteses (a) e (b) na docstring do módulo.",
     "atraso_tendencia": "Atraso do pedido mais recente menos o do mais antigo (dias); nulo com 1 pedido.",
     "intervalo_medio_dias": "Média de dias entre pedidos consecutivos; nulo com 1 pedido.",
     "span_dias": "Dias entre o primeiro e o último pedido.",
