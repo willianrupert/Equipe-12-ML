@@ -7,8 +7,8 @@
 %   1. envie este arquivo e as figuras usadas de reports/figures/ para a pasta figuras/ do projeto;
 %   2. o IEEEtran.cls já vem instalado no Overleaf.
 %
-% Os textos em azul (\nota{...}) são o roteiro de cada seção, com os números
-% dos notebooks. Substitua cada um pelo texto final e apague o \nota.
+% Os textos em azul (\nota{...}) marcam o que ainda falta, com o roteiro e os
+% números de cada parte. Substitua cada um pelo texto final e apague o \nota.
 
 \documentclass[conference]{IEEEtran}
 
@@ -24,7 +24,7 @@
 
 \graphicspath{{figuras/}{../reports/figures/}}
 
-% Roteiro do que vai em cada parte. Sai do texto final.
+% Marca o que ainda falta. Sai do texto final.
 \newcommand{\nota}[1]{\textcolor{blue}{[#1]}}
 
 \begin{document}
@@ -56,7 +56,7 @@ wnrj@cin.ufpe.br}
 \maketitle
 
 \begin{abstract}
-\nota{Escrever por último, em 5 ou 6 frases: o problema (risco de crédito de varejistas da Praso), os dados (3.000 clientes do CE, 31,3\% de inadimplência, histórico de pedidos para 22\%), os dois modelos, o resultado principal (aplicação: AUC 0,798 no teste; comportamental: KAN-8) e a principal limitação (sem data de referência).}
+A Praso vende a prazo para pequenos varejistas e precisa estimar o risco de inadimplência de cada cliente. Com dados reais de 3.000 clientes do Ceará, dos quais 31,3\% ficaram inadimplentes, construímos dois modelos: um de aplicação, que usa apenas o cadastro e serve para clientes novos, e um comportamental, que acrescenta o histórico de pedidos disponível para 22\% da base. A análise exploratória mostrou que o risco vem da combinação de três fontes (maturidade da empresa, histórico na Serasa e tipo de negócio), o que motivou modelos de árvore. O modelo de aplicação, um XGBoost calibrado com 10 variáveis escolhidas por ablação, obteve ROC-AUC de 0,777 na validação cruzada e 0,798 no conjunto de teste. \nota{Resultado do modelo comportamental (KAN-8) e uma frase sobre a política de crédito (KAN-9).} A principal limitação é a ausência de datas na base, que impede garantir que as variáveis sejam anteriores à inadimplência.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -66,11 +66,15 @@ risco de crédito, inadimplência, gradient boosting, ROC-AUC
 % =====================================================================
 \section{Introdução}
 
-\nota{Contextualização: a Praso vende a prazo para pequenos varejistas; decidir a quem dar crédito exige estimar a probabilidade de inadimplência.}
+A Praso fornece mercadorias a pequenos varejistas com pagamento a prazo. Vender a prazo amplia o acesso desses clientes a crédito, mas expõe a empresa ao risco de não receber. Decidir a quem conceder crédito, e com qual limite, exige estimar a probabilidade de inadimplência de cada cliente.
 
-\nota{Objetivo: dois modelos. O de aplicação usa só o cadastro e serve para clientes novos; o comportamental acrescenta o histórico de pedidos. Métrica principal: ROC-AUC, como pedido pela Praso.}
+O problema tem dois momentos. No cadastro, a empresa conhece apenas dados da empresa cliente (idade do CNPJ, capital social, atividade econômica), consultas a birôs de crédito e presença em plataformas digitais. Depois que o cliente começa a comprar, o histórico de pedidos (valores e atrasos) passa a informar também. Por isso, este trabalho constrói dois modelos, como pedido pela Praso:
+\begin{itemize}
+\item \textbf{modelo de aplicação}, só com dados do cadastro, para avaliar clientes novos;
+\item \textbf{modelo comportamental}, que acrescenta o histórico de pedidos.
+\end{itemize}
 
-\nota{Contribuições, em uma lista curta: (i) análise de dados com hipóteses testadas; (ii) modelo de aplicação com AUC 0,798 no teste; (iii) modelo comportamental e medida do ganho do histórico; (iv) proposta de uso dos scores numa política de crédito.}
+A métrica principal é o ROC-AUC, que mede a capacidade de ordenar os clientes por risco. As principais contribuições são: (i) uma análise exploratória orientada por hipóteses, que identifica as fontes de risco e suas interações; (ii) um modelo de aplicação com seleção de variáveis por ablação e comparação estatística entre algoritmos; (iii) a medida do ganho do histórico de pedidos sobre o cadastro; e (iv) uma discussão de como usar os scores numa política de crédito.
 
 % =====================================================================
 \section{Análise de Dados e Feature Engineering}
@@ -78,90 +82,121 @@ risco de crédito, inadimplência, gradient boosting, ROC-AUC
 \subsection{Análise Exploratória dos Dados}
 
 \subsubsection{Análise Exploratória Estrutural}
-\nota{Duas tabelas: clientes (3.000 linhas, 19 colunas, todos do CE, 36 municípios) e pedidos (1.977 pedidos de 664 clientes, 04/2022 a 04/2026, 77\% em 2023). Alvo: 940 inadimplentes (31,3\%). Várias variáveis vêm em faixas, inclusive valor e atraso dos pedidos. Dados sob confidencialidade: só agregados. Figura sugerida: kan1\_alvo.png.}
+A base tem duas tabelas fornecidas pela Praso sob termo de confidencialidade, por isso apresentamos apenas agregados. A tabela de clientes tem 3.000 linhas e 19 colunas, uma por cliente, todos do Ceará (36 municípios). O alvo é binário: 940 clientes (31,3\%) ficaram inadimplentes, um desbalanceamento moderado. A tabela de pedidos tem 1.977 pedidos de 664 clientes (22\% da base), entregues entre abril de 2022 e abril de 2026, 77\% deles em 2023. Muitas variáveis vêm em faixas, inclusive o capital social, a idade do CNPJ e o valor e o atraso dos pedidos. Não há linhas nem chaves duplicadas, nem valores fora do formato esperado.
+
+Dois pontos estruturais limitam o trabalho. Primeiro, a base não tem nenhuma data de cadastro nem de observação da inadimplência. Segundo, cada cliente tem no máximo 3 pedidos, o que sugere um recorte do histórico, e não o histórico completo.
 
 \subsubsection{Análise de Valores Faltantes e Outliers}
-\nota{serasa\_credores nulo em 82\%; nota do Google Maps só em 34 clientes; google\_maps\_tem\_website é cópia de tem\_gmaps; 97 negativados sem credor listado; cauda longa em negativações (máx. 141) e protestos (máx. 79), mantida porque árvores só usam a ordem. Figura sugerida: kan1\_nulos\_clientes.png.}
+A lista de credores da Serasa é nula em 82\% dos clientes, o que em geral significa ``sem credores''. Porém, 97 clientes têm negativação e nenhum credor listado, e para eles o nulo pode ser informação faltando. A nota do Google Maps existe para só 34 clientes, e a indicação de website é nula exatamente para quem não está no Maps, o que a torna uma cópia da presença na plataforma. Negativações e protestos têm cauda longa (máximos de 141 e 79), mas os valores altos são plausíveis.
 
 \subsubsection{Análise Univariada}
-\nota{Idade do CNPJ é o sinal mais forte (57\% para 6\%, AUC 0,639); número de credores (28\% para 72\%); sócio negativado (42\% contra 22\%); plataformas e protestos quase não informam. Figura sugerida: eda\_auc\_univariada.png ou eda\_idade\_cnpj.png.}
+A idade do CNPJ é a variável mais forte: a taxa de inadimplência cai de 57\% nas empresas mais novas para 6\% nas mais antigas, com degraus por volta de 1.600 e 5.000 dias. Mesmo assim, sozinha ela tem ROC-AUC de apenas 0,639. Na Serasa, o número de credores leva a taxa de 28\% a 72\%, e ter o sócio negativado, de 22\% para 42\%. Empresário individual inadimple mais que LTDA (34,7\% contra 21,3\%), e há segmentos com taxas de 19\% a 44\%. A presença no iFood ou no Google Maps e os protestos quase não informam.
 
 \subsubsection{Análise Bivariada}
-\nota{Redundâncias: credores e negativações ($\rho = 0{,}90$); os três níveis do CNAE (V de Cramér de 0,89 a 0,94); segmento não é recorte do CNAE (V = 0,58). Figura sugerida: eda\_spearman.png.}
+A correlação de Spearman mostra que o número de credores e o de negativações medem quase a mesma coisa ($\rho = 0{,}90$). Entre as categóricas, o V de Cramér indica que os três níveis do CNAE são redundantes entre si (0,89 a 0,94), enquanto o segmento da Praso não é um recorte do CNAE (V = 0,58) e se associa mais ao alvo.
 
 \subsubsection{Análise Multivariada}
-\nota{Interações: o sócio negativado dobra a taxa entre 1 e 14 anos de CNPJ; 2 ou mais credores anulam a proteção da idade (41,7\% contra 5,6\%). Duas variáveis já vão de 3,8\% a 85,7\%. Controle pela idade: Fontes 2 e 5 ficam iguais (\textasciitilde 41\%). Figura sugerida: eda\_interacao\_idade\_credores.png.}
+Os sinais interagem. Ter dois ou mais credores anula a proteção da idade: uma empresa com mais de 14 anos nessa situação inadimple 41,7\%, contra 5,6\% sem credores (Fig.~\ref{fig:interacao}). O sócio negativado quase não muda o risco de empresas com menos de um ano, que já é alto, mas dobra a taxa entre 1 e 14 anos. Combinando só duas variáveis, a taxa vai de 3,8\% a 85,7\%. Algumas diferenças diretas também enganam: ajustadas pela idade, as fontes de aquisição 2 e 5 ficam igualmente arriscadas (cerca de 41\%). Essas interações motivaram o uso de modelos de árvore.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{eda_interacao_idade_credores}
+\caption{Taxa de inadimplência por idade do CNPJ e número de credores na Serasa.}
+\label{fig:interacao}
+\end{figure}
 
 \subsection{Pré-processamento dos Dados}
 
+A limpeza compartilhada entre os dois modelos só faz o que não perde informação: converte tipos e datas, ordena os pedidos e transforma as faixas em categóricas ordenadas pelo limite inferior. Nenhum registro é removido.
+
 \subsubsection{Tratamento de Valores Faltantes}
-\nota{Nenhum registro removido. Nulos com significado viram flags (ex.: negativado\_sem\_credor) em vez de imputação; nos pedidos, o nulo é ignorado só na estatística da coluna que falta.}
+Em vez de imputar, os nulos com significado viram variáveis. Os negativados sem credor listado recebem a flag \texttt{negativado\_sem\_credor}, e a ausência nas plataformas vira ``sem contagem''. Nos dois pedidos com valor ou atraso nulo, o nulo é ignorado só na estatística da coluna que falta.
 
 \subsubsection{Tratamento de Outliers}
-\nota{Sem corte: contagens altas são plausíveis e modelos de árvore são invariantes à escala.}
+As contagens altas da Serasa foram mantidas: são plausíveis, e os modelos de árvore usam só a ordem dos valores, então a cauda longa não distorce o ajuste.
 
 \subsubsection{Detecção e Tratamento de Duplicadas}
-\nota{Nenhuma linha ou chave duplicada. Pedidos no mesmo dia (74 pares) mantidos como pedidos distintos.}
+Não há linhas nem chaves duplicadas. Os 74 pares de pedidos do mesmo cliente no mesmo dia foram mantidos como pedidos distintos.
 
 \subsubsection{Feature Scaling}
-\nota{Não aplicado: os modelos finais são de árvore. Na regressão logística, padronização dentro do Pipeline.}
+Os modelos finais são de árvore e dispensam normalização. Na regressão logística, usada como comparação, as variáveis numéricas são padronizadas.
 
 \subsubsection{Encoding de Variáveis Categóricas}
-\nota{Faixas viram categórica ordenada (posição da faixa). Categorias com menos de 30 clientes no treino viram um grupo só, ajustado dentro do Pipeline. Target encoding no CNAE foi testado e não ganhou. Na regressão logística, one-hot com as raras agrupadas.}
+As faixas viram a posição da faixa (codificação ordinal). Nas categóricas, as categorias com menos de 30 clientes no treino formam um grupo só; para as árvores, cada categoria vira um código, e para a regressão logística, uma coluna \textit{one-hot}. O \textit{target encoding} da classe do CNAE foi testado e não superou o agrupamento das raras. Toda transformação que aprende dos dados fica dentro do \texttt{Pipeline} do scikit-learn e é ajustada só no treino.
 
 \subsection{Divisão dos Dados}
-\nota{80/20 estratificado por inadimplente $\times$ tem\_pedidos (seed 42): treino 2.400, teste 600, ambos com 31,3\% e 22\% com pedidos. No treino, validação cruzada estratificada repetida 5 folds $\times$ 5 repetições, comparada com erro padrão corrigido de Nadeau e Bengio. Teste usado uma vez. Sem data, a divisão não pode ser temporal.}
+Sem datas, a divisão não pode ser temporal. Usamos uma divisão aleatória de 80/20, estratificada pelo alvo e pela presença de pedidos (semente 42): 2.400 clientes no treino e 600 no teste, ambos com 31,3\% de inadimplência e 22\% com pedidos. A estratificação pela presença de pedidos garante que os dois modelos sejam comparados nos mesmos clientes. No treino, todas as escolhas usam validação cruzada estratificada com 5 folds e 5 repetições. Como os folds repetidos reaproveitam clientes, as comparações pareadas usam o erro padrão corrigido de Nadeau e Bengio~\cite{nadeau2003}. O teste é usado uma única vez, na avaliação final.
 
 \subsection{Feature Engineering}
 
 \subsubsection{Modelo de aplicação}
-\nota{23 features determinísticas, reduzidas a 10 por ablação no treino (Random Forest, regra de 1 erro padrão). Serasa acrescenta +0,100 e negócio +0,032 sobre a idade; plataformas, negativações, tipo de credor e divisão do CNAE saem sem perda. Lista final e AUC por etapa em tabela. Figura sugerida: kan5\_ablacao.png.}
+A partir do cadastro, criamos 23 variáveis calculadas linha a linha, sem olhar o alvo: por exemplo, a posição da faixa de idade, o número de credores, flags por tipo de credor e a região do município. Para escolher as finais, fizemos uma ablação no treino com uma Random Forest de parâmetros fixos. Cada item é retirado e o ganho de AUC é medido nos mesmos folds; o item fica se o ganho passar de um erro padrão corrigido. A Fig.~\ref{fig:ablacao} mostra o resultado por bloco, partindo da idade sozinha (AUC 0,631). Nessa ordem, a Serasa acrescenta 0,100 e o tipo de negócio, 0,032; o bloco da empresa (capital social e natureza jurídica) quase nada acrescenta logo após a idade, mas acrescenta 0,009 quando retirado do modelo final, e por isso fica. Plataformas, negativações (redundantes com os credores), tipo de credor e divisão do CNAE saíram sem perda. O modelo final tem 10 variáveis: idade do CNPJ, capital social, natureza jurídica, número de credores, sócio negativado, negativado sem credor, fonte de aquisição, segmento, classe do CNAE e região, com AUC de 0,772, contra 0,765 com as 23.
+
+Como não se sabe quando a Serasa foi consultada, medimos também a dependência desse bloco. Sem a Serasa, o AUC cai para 0,699, ainda bem acima da idade sozinha, e nos clientes sem nenhum registro na Serasa o modelo ordena quase tão bem quanto no total (0,767 contra 0,771).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{kan5_ablacao}
+\caption{Ablação das variáveis do modelo de aplicação: AUC na validação cruzada ao acrescentar cada bloco.}
+\label{fig:ablacao}
+\end{figure}
 
 \subsubsection{Modelo comportamental}
-\nota{16 agregações por cliente (valor, atraso, ritmo). Hipóteses (a) último pedido anterior à inadimplência e (b) último pedido é o evento; a análise do histórico dos inadimplentes sustenta (a). O sinal está no atraso. Figuras sugeridas: kan7\_atraso\_por\_posicao.png, kan7\_auc\_univariada.png.}
+Para cada cliente com pedidos, agregamos 16 variáveis sobre valor (mínimo, média, máximo), atraso (média, máximo, proporção de pedidos com atraso, atraso do último pedido, tendência) e ritmo de compra. As faixas viram o ponto médio. O número de pedidos não entra, porque quase todos os clientes têm 3, e não há recência absoluta, porque sem data de referência ela mediria a época, e não o comportamento.
+
+Sem data, há duas hipóteses: (a) o último pedido é anterior à inadimplência e todos os pedidos entram; (b) o último pedido é o próprio evento e deve sair. Testamos as duas no histórico dos inadimplentes, com regra fixada antes de ver o resultado. Se (b) valesse, os inadimplentes com o último pedido em dia só seriam explicados por um histórico anterior de atrasos graves. Porém, 52 dos 110 inadimplentes do treino com pedidos têm o último pedido com até 2 dias de atraso, e nenhum dos 51 com histórico anterior atrasou mais de 15 dias antes dele. Seguimos a hipótese (a).
+
+O sinal está no atraso (Fig.~\ref{fig:atraso}). Com as variáveis de aplicação no modelo, o histórico sobe o AUC dos clientes com pedidos de 0,692 para 0,787, e o bloco de atraso sozinho responde por 0,084 desse ganho.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{kan7_atraso_por_posicao}
+\caption{Taxa de inadimplência no treino com atraso de até 2 dias ou acima disso, por posição do pedido no histórico.}
+\label{fig:atraso}
+\end{figure}
 
 % =====================================================================
 \section{Modelagem}
 
-\nota{Por que árvores: o risco vem da combinação das features (seção II-A5), e árvores montam interações e degraus sozinhas. Busca aleatória nos 25 folds (20 configurações na Random Forest, 40 no XGBoost e no LightGBM), com espaços que favorecem regularização. Escolha conferida em repetições que não participaram dela.}
+Como o risco vem da combinação das variáveis e de degraus na idade (Seção II-A5), o modelo de aplicação usa principalmente modelos de árvore, que encontram essas interações sozinhos. Para cada modelo, uma busca aleatória sorteia configurações de um espaço de hiperparâmetros e mede cada uma nos 25 folds. Os espaços favorecem modelos regularizados, porque com 2.400 clientes árvores profundas e folhas pequenas decoram o treino. Como escolher a melhor entre muitas configurações tende a premiar a sorte, a escolha foi conferida separando as repetições: escolhendo só pelas repetições 1 e 2, a configuração vencedora de cada modelo é a mesma, e o ganho se mantém nas repetições 3 a 5.
 
-\subsection{Árvore de Decisão e Regressão Logística (linhas de base)}
+\subsection{Linhas de Base: Árvore de Decisão e Regressão Logística}
 \subsubsection{Conceitos Básicos}
-\nota{Uma frase para cada.}
+A árvore de decisão divide os clientes recursivamente pela variável e pelo corte que mais separam o alvo. A regressão logística modela o log da razão de chances como uma combinação linear das variáveis.
 \subsubsection{Justificativa}
-\nota{Linhas de base interpretáveis. Árvore: profundidade 4, $\geq$ 30 clientes por folha. Logística: C = 0,03, coeficientes repetem a EDA.}
+São modelos interpretáveis, que servem de referência. A logística é a alternativa usual em crédito, e seus coeficientes repetem a análise exploratória: idade, credores e sócio negativado pesam mais.
 \subsubsection{Espaço de Busca}
-\nota{Árvore com parâmetros fixos; logística com busca em C.}
+A árvore usa parâmetros fixos. Na logística, com regularização L2, a força $C$ é escolhida numa grade de 0,01 a 3, em que o AUC varia só de 0,758 a 0,762. Também testamos as interações da análise exploratória (idade $\times$ sócio e idade $\times$ credores), que não acrescentaram nada.
 \subsubsection{Hiperparâmetros Selecionados}
-\nota{AUC na validação: árvore 0,723; logística 0,762.}
+Árvore com profundidade máxima 4 e pelo menos 30 clientes por folha; logística com $C = 0{,}03$.
 
 \subsection{Random Forest}
 \subsubsection{Conceitos Básicos}
-\nota{Bagging de árvores com subamostragem de features.}
+A Random Forest~\cite{breiman2001} treina muitas árvores em amostras \textit{bootstrap} dos clientes, sorteando um subconjunto de variáveis em cada divisão, e faz a média das previsões.
 \subsubsection{Justificativa}
-\nota{Ensemble estável, usado como referência na ablação.}
+É um \textit{ensemble} estável e pouco sensível aos hiperparâmetros, por isso foi usada na ablação, com 300 árvores e pelo menos 20 clientes por folha.
 \subsubsection{Espaço de Busca}
-\nota{Clientes por folha, features por divisão, profundidade (20 configurações).}
+Número mínimo de clientes por folha, número de variáveis por divisão e profundidade máxima (20 configurações).
 \subsubsection{Hiperparâmetros Selecionados}
-\nota{AUC 0,773 com busca, contra 0,772 sem tuning.}
+As melhores configurações usam folhas de 5 a 10 clientes com profundidade limitada (6 ou 10).
 
-\subsection{Gradient Boosting (XGBoost e LightGBM)}
+\subsection{Gradient Boosting: XGBoost e LightGBM}
 \subsubsection{Conceitos Básicos}
-\nota{Árvores ajustadas em sequência sobre o gradiente da perda.}
+O \textit{gradient boosting} ajusta árvores em sequência, cada uma corrigindo o erro das anteriores na direção do gradiente da perda. O XGBoost~\cite{chen2016} acrescenta regularização explícita; o LightGBM cresce as árvores por folha.
 \subsubsection{Justificativa}
-\nota{Melhor desempenho esperado em dados tabulares; regularização explícita.}
+É a família com melhor desempenho típico em dados tabulares, e a regularização controla o \textit{overfitting} numa base pequena.
 \subsubsection{Espaço de Busca}
-\nota{Nº de árvores, taxa de aprendizado, profundidade ou nº de folhas, peso/clientes por folha, subamostragem de clientes e features, L2 (40 configurações cada).}
+Número de árvores, taxa de aprendizado, profundidade (ou número de folhas no LightGBM), peso ou número mínimo de clientes por folha, subamostragem de clientes e de variáveis e regularização L2, com 40 configurações por modelo.
 \subsubsection{Hiperparâmetros Selecionados}
-\nota{XGBoost final: 500 árvores, profundidade 5, taxa 0,01, 80\% dos clientes e 60\% das features por árvore, L2 = 10, com calibração sigmoide. LightGBM: 0,776.}
+O modelo final é o XGBoost com 500 árvores, profundidade 5, taxa de aprendizado 0,01, 80\% dos clientes e 60\% das variáveis por árvore e regularização L2 = 10, seguido de calibração sigmoide para que o score seja uma probabilidade.
 
 \subsection{Modelo Comportamental}
-\nota{Preencher com a KAN-8: algoritmo, features usadas (versão (a)), busca e hiperparâmetros.}
+\nota{KAN-8: algoritmo, variáveis usadas (versão (a), bloco de atraso), espaço de busca e hiperparâmetros selecionados. Usar o mesmo split e os mesmos folds.}
 
 % =====================================================================
 \section{Análise e Comparação de Resultados}
 
-\nota{Métrica: ROC-AUC (ordenação, insensível ao desbalanceamento e ao corte), com erro padrão corrigido de Nadeau e Bengio para comparações pareadas na validação e IC por bootstrap no teste. Calibração avaliada à parte.}
+A métrica principal é o ROC-AUC: a probabilidade de um inadimplente sorteado ter score maior que um adimplente sorteado. Ela não depende do corte nem é afetada pelo desbalanceamento, e corresponde ao uso do score para ordenar clientes. Na validação cruzada, os modelos são comparados nos mesmos folds, com o erro padrão corrigido; no teste, os intervalos de confiança vêm de \textit{bootstrap}. A calibração é avaliada à parte.
 
 \begin{table}[htbp]
 \caption{Modelo de aplicação: AUC na validação cruzada 5$\times$5}
@@ -182,24 +217,29 @@ LightGBM (busca) & 0,776 & 0,077 \\
 \end{tabular}
 \end{table}
 
-\nota{Leitura: o ganho do XGBoost sobre a Random Forest é pequeno (+0,004, 1,4 erro padrão), mas vence em 19 de 25 folds. Os três modelos de árvore chegam ao mesmo teto: o limite está nos dados. Figura sugerida: kan6\_comparacao.png.}
+A Tabela~\ref{tab:aplicacao} resume a comparação. A árvore de decisão (0,723) e a logística (0,762) ficam abaixo da Random Forest sem tuning. Os três modelos de árvore com busca chegam ao mesmo teto, perto de 0,776, o que indica que o limite está nos dados, e não no algoritmo. O XGBoost é o único que supera a Random Forest por mais de um erro padrão corrigido: o ganho é pequeno (+0,004), mas consistente, já que ele vence em 19 dos 25 folds. Os modelos que validam melhor também se ajustam mais ao treino (diferença de 0,070 no XGBoost), mas, na busca, tanto as configurações que decoram mais quanto as que decoram menos validam pior.
 
-\nota{Teste (600 clientes): AUC 0,798 (IC 95\%: 0,757 a 0,835), contra 0,659 da idade e 0,746 da árvore. Nos 133 clientes com pedidos: 0,671 (0,550 a 0,775). Figura sugerida: kan6\_roc\_teste.png.}
+No teste, usado uma única vez, o modelo final obteve AUC de 0,798 (IC de 95\%: 0,757 a 0,835), contra 0,659 da idade sozinha e 0,746 da árvore de decisão (Fig.~\ref{fig:roc}). Entre o XGBoost, a Random Forest e a logística, o teste não separa: as diferenças são de até 0,006, com intervalos que cruzam o zero. Nos 133 clientes com pedidos do teste, o AUC é 0,671 (0,550 a 0,775).
 
-\nota{Calibração: score médio 31,5\% (treino) e 30,7\% (teste) para 31,3\% observados; por decil, de 5,0\% a 70,4\%. Superestima o risco de quem tem pedidos (28,3\% contra 20,7\%). Figura sugerida: kan6\_calibracao.png.}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\columnwidth]{kan6_roc_teste}
+\caption{Curvas ROC no conjunto de teste.}
+\label{fig:roc}
+\end{figure}
 
-\nota{Comportamental (KAN-8): AUC nos clientes com pedidos contra a referência do modelo de aplicação (0,693 fora da amostra no treino; 0,671 no teste), com IC por bootstrap. Nas features da KAN-7, os pedidos sobem o AUC de 0,692 para 0,787 na validação.}
+O score calibrado acompanha a taxa observada: a média é de 31,5\% no treino (fora da amostra) e 30,7\% no teste, para 31,3\% observados, e por decil de score a taxa vai de 5,0\% a 70,4\%. Nos clientes com histórico de pedidos, porém, o score superestima o risco (28,3\% contra 20,7\% observados), porque o modelo de aplicação não sabe quem tem histórico e esses clientes inadimplem menos.
+
+\nota{KAN-8: tabela com o AUC do modelo comportamental nos clientes com pedidos, contra a referência do modelo de aplicação nesses clientes (0,693 fora da amostra no treino, 531 clientes; 0,671 no teste, 133 clientes). Diferença no teste com IC por bootstrap, lembrando que só 28 inadimplentes do teste têm pedidos (erro padrão perto de 0,05). Comparar a ordenação separada da calibração.}
 
 % =====================================================================
 \section{Conclusão e Discussão}
 
-\nota{Texto da KAN-9: como usar os scores numa política de crédito (cortes pelos scores fora da amostra do treino, limite por faixa de risco, papel do componente comportamental).}
+\nota{KAN-9: como usar os scores numa política de crédito (cortes pelos scores fora da amostra do treino, conferidos no teste; limite de crédito por faixa de risco; papel do componente comportamental).}
 
-\nota{Achados: idade, Serasa e tipo de negócio carregam o risco; nenhuma variável resolve sozinha; o atraso é o sinal do histórico.}
+O risco de inadimplência dos clientes da Praso vem de três fontes: a maturidade da empresa, o histórico na Serasa e o tipo de negócio. Nenhuma variável resolve sozinha, mas a combinação delas leva o AUC de 0,639 (idade do CNPJ) para 0,777 na validação e 0,798 no teste. Com 2.400 clientes e 10 variáveis fortes, a escolha do algoritmo importa pouco: os modelos de árvore ordenam os clientes quase igual, e a regressão logística fica perto deles, como alternativa interpretável. No histórico de pedidos, o sinal está no atraso.
 
-\nota{Limitações: sem data de referência (risco de vazamento na Serasa e no último pedido); no máximo 3 pedidos por cliente; só 28 inadimplentes com pedidos no teste; alvo pouco definido para quem não comprou.}
-
-\nota{Trabalhos futuros: dados com data, validação temporal, mais histórico de pedidos.}
+As principais limitações vêm dos dados. Sem nenhuma data, não é possível garantir que a consulta à Serasa e os pedidos sejam anteriores à inadimplência; o teste das hipóteses sobre o último pedido reduz, mas não elimina, esse risco. O histórico tem no máximo 3 pedidos por cliente, e só 28 inadimplentes do teste têm pedidos, o que deixa a avaliação do modelo comportamental com intervalos largos. Também não está claro o que significa inadimplência para os 78\% de clientes sem nenhum pedido. Como trabalhos futuros, sugerimos obter as datas de cadastro e de observação do alvo, o que permitiria uma validação temporal, e um histórico de pedidos mais longo.
 
 % =====================================================================
 \begin{thebibliography}{1}
