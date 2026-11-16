@@ -24,6 +24,7 @@ data/raw/          CSVs originais da Praso (não versionados)
 data/processed/    dados limpos gerados pelos notebooks (não versionados)
 notebooks/         um notebook por etapa, numerados na ordem de execução
 reports/figures/   gráficos usados no relatório e nos slides
+relatorio/main.tex         relatório final no template IEEEtran da disciplina (KAN-10)
 src/dados.py               limpeza compartilhada (KAN-1): tipos, datas, registros inválidos, utilitárias de faixas
 src/split.py               split treino/teste e folds da validação cruzada, compartilhados (KAN-5)
 src/avaliacao.py           AUC por fold e comparação pareada entre configurações (KAN-5)
@@ -36,14 +37,14 @@ src/features_comportamentais.py  features do histórico de pedidos, na versão e
 
 | Etapa | Ticket | Notebook / código | Status |
 |---|---|---|---|
-| Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | em revisão |
-| EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | em revisão |
-| Features do modelo de aplicação | KAN-5 | `notebooks/03_features_aplicacao.ipynb`, `src/features_aplicacao.py`, `src/split.py`, `src/avaliacao.py` | em revisão |
-| Modelo de aplicação | KAN-6 | `notebooks/05_modelo_aplicacao.ipynb`, `src/modelo_aplicacao.py` | em revisão |
-| Agregações do histórico de pedidos | KAN-7 | `notebooks/04_features_comportamentais.ipynb`, `src/features_comportamentais.py` | em revisão |
-| Modelo comportamental | KAN-8 | — | a fazer |
+| Setup, carregamento e qualidade dos dados | KAN-1 | `notebooks/01_setup_qualidade_dados.ipynb`, `src/dados.py` | concluído |
+| EDA vs. inadimplência | KAN-4 | `notebooks/02_eda_inadimplencia.ipynb` | concluído |
+| Features do modelo de aplicação | KAN-5 | `notebooks/03_features_aplicacao.ipynb`, `src/features_aplicacao.py`, `src/split.py`, `src/avaliacao.py` | concluído |
+| Modelo de aplicação | KAN-6 | `notebooks/05_modelo_aplicacao.ipynb`, `src/modelo_aplicacao.py` | concluído |
+| Agregações do histórico de pedidos | KAN-7 | `notebooks/04_features_comportamentais.ipynb`, `src/features_comportamentais.py` | concluído |
+| Modelo comportamental | KAN-8 | — | em andamento |
 | Política de crédito e discussão | KAN-9 | — | a fazer |
-| Relatório (até 8 páginas, template Overleaf) | KAN-10 | — | a fazer |
+| Relatório (até 8 páginas, template Overleaf) | KAN-10 | `relatorio/main.tex` | em andamento |
 | Slides (15 min, modelo CIn) | KAN-11 | — | a fazer |
 
 Entrega final no Classroom: **25/11/2026** (relatório, slides e link deste repositório).
