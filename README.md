@@ -47,7 +47,7 @@ src/features_comportamentais.py  features do histórico de pedidos, na versão e
 | Relatório (até 8 páginas, template Overleaf) | KAN-10 | `relatorio/main.tex` | em andamento |
 | Slides (15 min, modelo CIn) | KAN-11 | — | a fazer |
 
-Entrega final no Classroom: **25/11/2026** (relatório, slides e link deste repositório).
+Entrega final no Classroom: **02/12/2026** (relatório, slides e link deste repositório). Apresentação: **03/12/2026**, às 8h.
 
 ## Como executar
 

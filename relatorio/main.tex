@@ -1,7 +1,7 @@
 % Relatório final (KAN-10): CIN0144, Tema 8, Praso: Previsão de Inadimplência.
 % Baseado no template IEEEtran (bare_conf.tex) da disciplina no Overleaf.
 %
-% Limite: 8 páginas. Entrega no Classroom até 25/11/2026.
+% Limite: 8 páginas. Entrega no Classroom até 02/12/2026; apresentação em 03/12.
 %
 % Para compilar no Overleaf:
 %   1. envie este arquivo e as figuras usadas de reports/figures/ para a pasta figuras/ do projeto;
@@ -56,7 +56,7 @@ wnrj@cin.ufpe.br}
 \maketitle
 
 \begin{abstract}
-A Praso vende a prazo para pequenos varejistas e precisa estimar o risco de inadimplência de cada cliente. Com dados reais de 3.000 clientes do Ceará, dos quais 31,3\% ficaram inadimplentes, construímos dois modelos: um de aplicação, que usa apenas o cadastro e serve para clientes novos, e um comportamental, que acrescenta o histórico de pedidos disponível para 22\% da base. A análise exploratória mostrou que o risco vem da combinação de três fontes (maturidade da empresa, histórico na Serasa e tipo de negócio), o que motivou modelos de árvore. O modelo de aplicação, um XGBoost calibrado com 10 variáveis escolhidas por ablação, obteve ROC-AUC de 0,777 na validação cruzada e 0,798 no conjunto de teste. \nota{Resultado do modelo comportamental (KAN-8) e uma frase sobre a política de crédito (KAN-9).} A principal limitação é a ausência de datas na base, que impede garantir que as variáveis sejam anteriores à inadimplência.
+A Praso vende a prazo para pequenos varejistas e precisa estimar o risco de inadimplência de cada cliente. Com dados reais de 3.000 clientes do Ceará, dos quais 31,3\% ficaram inadimplentes, construímos dois modelos: um de aplicação, que usa apenas o cadastro e serve para clientes novos, e um comportamental, que acrescenta o histórico de pedidos disponível para 22\% da base. A análise exploratória mostrou que o risco vem da combinação de três fontes (maturidade da empresa, histórico na Serasa e tipo de negócio), o que motivou modelos de árvore. O modelo de aplicação, um XGBoost calibrado com 10 variáveis escolhidas por ablação, obteve ROC-AUC de 0,777 na validação cruzada e 0,798 no conjunto de teste. O modelo comportamental, uma Random Forest treinada nos 664 clientes com pedidos, eleva o AUC nesses clientes de 0,691 para 0,766 na validação, com o atraso nos pagamentos como principal sinal. \nota{Uma frase sobre a política de crédito (KAN-9).} A principal limitação é a ausência de datas na base, que impede garantir que as variáveis sejam anteriores à inadimplência.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -146,7 +146,7 @@ Para cada cliente com pedidos, agregamos 16 variáveis sobre valor (mínimo, mé
 
 Sem data, há duas hipóteses: (a) o último pedido é anterior à inadimplência e todos os pedidos entram; (b) o último pedido é o próprio evento e deve sair. Testamos as duas no histórico dos inadimplentes, com regra fixada antes de ver o resultado. Se (b) valesse, os inadimplentes com o último pedido em dia só seriam explicados por um histórico anterior de atrasos graves. Porém, 52 dos 110 inadimplentes do treino com pedidos têm o último pedido com até 2 dias de atraso, e nenhum dos 51 com histórico anterior atrasou mais de 15 dias antes dele. Seguimos a hipótese (a).
 
-O sinal está no atraso (Fig.~\ref{fig:atraso}). Com as variáveis de aplicação no modelo, o histórico sobe o AUC dos clientes com pedidos de 0,692 para 0,787, e o bloco de atraso sozinho responde por 0,084 desse ganho.
+O sinal está no atraso (Fig.~\ref{fig:atraso}): quem atrasou mais de 2 dias inadimple mais, em qualquer posição do histórico, e a diferença é maior no pedido mais recente.
 
 \begin{figure}[htbp]
 \centering
@@ -191,7 +191,11 @@ Número de árvores, taxa de aprendizado, profundidade (ou número de folhas no 
 O modelo final é o XGBoost com 500 árvores, profundidade 5, taxa de aprendizado 0,01, 80\% dos clientes e 60\% das variáveis por árvore e regularização L2 = 10, seguido de calibração sigmoide para que o score seja uma probabilidade.
 
 \subsection{Modelo Comportamental}
-\nota{KAN-8: algoritmo, variáveis usadas (versão (a), bloco de atraso), espaço de busca e hiperparâmetros selecionados. Usar o mesmo split e os mesmos folds.}
+O modelo comportamental é treinado e avaliado só nos 664 clientes com histórico de pedidos (531 no treino, com 110 inadimplentes, e 133 no teste), com o mesmo split e os mesmos folds do modelo de aplicação, para que a comparação seja pareada. Quem não tem pedidos continua com o modelo de aplicação. O enunciado define o cliente ativo como quem comprou nos últimos 30 dias, mas sem data de referência esse corte não pode ser aplicado: a partir da data mais recente da base, sobraria um único cliente. Treinar com todos os clientes, com as variáveis de pedidos nulas para quem não tem histórico, daria AUC um pouco maior nas árvores (0,020 na Random Forest), mas misturaria duas populações com taxas diferentes (34\% e 21\%) e subestimaria o risco dos clientes com pedidos.
+
+As variáveis são as 10 do modelo de aplicação, 6 de atraso (média, mediana, máximo, proporção de pedidos com atraso e com mais de 2 dias, e tendência) e o intervalo médio entre pedidos. Os blocos de pedidos entraram um de cada vez, com a mesma regra de um erro padrão. O atraso eleva o AUC de 0,691 para 0,754; o intervalo acrescenta 0,012, no limite da regra; o valor e o número de dias com pedido não acrescentam.
+
+Os candidatos foram a regressão logística, com a mesma grade de $C$, e a Random Forest, o XGBoost e o LightGBM, com busca aleatória nos mesmos espaços do modelo de aplicação (20 configurações cada). Pela regra, fica o candidato mais simples que o melhor não supera por mais de um erro padrão: a Random Forest com os parâmetros da ablação (300 árvores, pelo menos 20 clientes por folha e raiz quadrada do número de variáveis por divisão). Treinada só nos clientes com pedidos, ela já sai calibrada (score médio de 20,7\% para 20,7\% observados), e a calibração sigmoide não reduz o erro de Brier, por isso não é usada.
 
 % =====================================================================
 \section{Análise e Comparação de Resultados}
@@ -219,7 +223,7 @@ LightGBM (busca) & 0,776 & 0,077 \\
 
 A Tabela~\ref{tab:aplicacao} resume a comparação. A árvore de decisão (0,723) e a logística (0,762) ficam abaixo da Random Forest sem tuning. Os três modelos de árvore com busca chegam ao mesmo teto, perto de 0,776, o que indica que o limite está nos dados, e não no algoritmo. O XGBoost é o único que supera a Random Forest por mais de um erro padrão corrigido: o ganho é pequeno (+0,004), mas consistente, já que ele vence em 19 dos 25 folds. Os modelos que validam melhor também se ajustam mais ao treino (diferença de 0,070 no XGBoost), mas, na busca, tanto as configurações que decoram mais quanto as que decoram menos validam pior.
 
-No teste, usado uma única vez, o modelo final obteve AUC de 0,798 (IC de 95\%: 0,757 a 0,835), contra 0,659 da idade sozinha e 0,746 da árvore de decisão (Fig.~\ref{fig:roc}). Entre o XGBoost, a Random Forest e a logística, o teste não separa: as diferenças são de até 0,006, com intervalos que cruzam o zero. Nos 133 clientes com pedidos do teste, o AUC é 0,671 (0,550 a 0,775).
+No teste, usado uma única vez, o modelo final obteve AUC de 0,798 (IC de 95\%: 0,757 a 0,835), contra 0,659 da idade sozinha e 0,746 da árvore de decisão (Fig.~\ref{fig:roc}). Entre o XGBoost, a Random Forest e a logística, o teste não separa: as diferenças são de até 0,006, com intervalos que cruzam o zero.
 
 \begin{figure}[htbp]
 \centering
@@ -230,16 +234,23 @@ No teste, usado uma única vez, o modelo final obteve AUC de 0,798 (IC de 95\%: 
 
 O score calibrado acompanha a taxa observada: a média é de 31,5\% no treino (fora da amostra) e 30,7\% no teste, para 31,3\% observados, e por decil de score a taxa vai de 5,0\% a 70,4\%. Nos clientes com histórico de pedidos, porém, o score superestima o risco (28,3\% contra 20,7\% observados), porque o modelo de aplicação não sabe quem tem histórico e esses clientes inadimplem menos.
 
-\nota{KAN-8: tabela com o AUC do modelo comportamental nos clientes com pedidos, contra a referência do modelo de aplicação nesses clientes (0,693 fora da amostra no treino, 531 clientes; 0,671 no teste, 133 clientes). Diferença no teste com IC por bootstrap, lembrando que só 28 inadimplentes do teste têm pedidos (erro padrão perto de 0,05). Comparar a ordenação separada da calibração.}
+Nos clientes com pedidos, o modelo comportamental eleva o AUC de validação de 0,691, o do modelo de aplicação nos mesmos clientes e folds, para 0,766 (+0,075, 2,0 erros padrão; Fig.~\ref{fig:comportamental}). Os modelos de árvore empatam entre si (0,766 a 0,772), e a logística fica em 0,748. No teste, o AUC é 0,740 (IC de 95\%: 0,638 a 0,835), contra 0,670 do modelo de aplicação nos mesmos 133 clientes. A diferença, de +0,070, vai na mesma direção da validação, mas o intervalo dela ($-0{,}060$ a $+0{,}203$) cruza o zero: com só 28 inadimplentes, o teste sozinho não confirma o ganho. A logística foi melhor no teste (0,789), mas os intervalos se sobrepõem quase inteiros, e escolher pelo teste seria usá-lo duas vezes. O score acompanha a taxa observada (22,0\% previsto para 21,1\% no teste) e, por decil, a inadimplência vai de 0\% a 60,4\% no treino.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\columnwidth]{kan8_comparacao}
+\caption{Modelo comportamental: AUC de validação nos clientes com pedidos, com $\pm$1 erro padrão. Em destaque, o modelo escolhido; em cinza, o modelo de aplicação nos mesmos clientes.}
+\label{fig:comportamental}
+\end{figure}
 
 % =====================================================================
 \section{Conclusão e Discussão}
 
 \nota{KAN-9: como usar os scores numa política de crédito (cortes pelos scores fora da amostra do treino, conferidos no teste; limite de crédito por faixa de risco; papel do componente comportamental).}
 
-O risco de inadimplência dos clientes da Praso vem de três fontes: a maturidade da empresa, o histórico na Serasa e o tipo de negócio. Nenhuma variável resolve sozinha, mas a combinação delas leva o AUC de 0,639 (idade do CNPJ) para 0,777 na validação e 0,798 no teste. Com 2.400 clientes e 10 variáveis fortes, a escolha do algoritmo importa pouco: os modelos de árvore ordenam os clientes quase igual, e a regressão logística fica perto deles, como alternativa interpretável. No histórico de pedidos, o sinal está no atraso.
+O risco de inadimplência dos clientes da Praso vem de três fontes: a maturidade da empresa, o histórico na Serasa e o tipo de negócio. Nenhuma variável resolve sozinha, mas a combinação delas leva o AUC de 0,639 (idade do CNPJ) para 0,777 na validação e 0,798 no teste. Com 2.400 clientes e 10 variáveis fortes, a escolha do algoritmo importa pouco: os modelos de árvore ordenam os clientes quase igual, e a regressão logística fica perto deles, como alternativa interpretável. No histórico de pedidos, o sinal está no atraso: nos clientes com pedidos, o modelo comportamental eleva o AUC de 0,691 para 0,766 na validação.
 
-As principais limitações vêm dos dados. Sem nenhuma data, não é possível garantir que a consulta à Serasa e os pedidos sejam anteriores à inadimplência; o teste das hipóteses sobre o último pedido reduz, mas não elimina, esse risco. O histórico tem no máximo 3 pedidos por cliente, e só 28 inadimplentes do teste têm pedidos, o que deixa a avaliação do modelo comportamental com intervalos largos. Também não está claro o que significa inadimplência para os 78\% de clientes sem nenhum pedido. Como trabalhos futuros, sugerimos obter as datas de cadastro e de observação do alvo, o que permitiria uma validação temporal, e um histórico de pedidos mais longo.
+As principais limitações vêm dos dados. Sem nenhuma data, não é possível garantir que a consulta à Serasa e os pedidos sejam anteriores à inadimplência; o teste das hipóteses sobre o último pedido reduz, mas não elimina, esse risco. O histórico tem no máximo os 3 pedidos mais recentes de cada cliente, o que impede contar os pedidos e aplicar a definição de cliente ativo do enunciado. Só 28 inadimplentes do teste têm pedidos, o que deixa a avaliação do modelo comportamental com intervalos largos, e a escolha entre a logística e as árvores nesse modelo é decidida por margens pequenas. Também não está claro o que significa inadimplência para os 78\% de clientes sem nenhum pedido. Como trabalhos futuros, sugerimos obter as datas de cadastro e de observação do alvo, o que permitiria uma validação temporal, e um histórico de pedidos mais longo.
 
 % =====================================================================
 \begin{thebibliography}{1}
